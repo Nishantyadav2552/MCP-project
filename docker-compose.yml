@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: canva-agent-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=development
+      - PORT=8000
+      - HOST=0.0.0.0
+      - FRONTEND_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80
+      - LLM_PROVIDER=${LLM_PROVIDER:-compatible}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LANGFUSE_ENABLED=${LANGFUSE_ENABLED:-false}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: canva-agent-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

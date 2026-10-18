@@ -13,9 +13,11 @@
     "dev:bridge": "npm run dev --workspace=@canva-cursor/bridge",
     "dev:web": "npm run dev --workspace=@canva-cursor/web",
     "test:phase1": "node --test tests/integration/phase1.test.mjs",
-    "test:phase2": "node --test tests/unit/knowledge-graph.test.mjs"
+    "test:phase2": "node --test tests/unit/knowledge-graph.test.mjs",
+    "test:phase3": "node --test tests/unit/mcp-tools.test.mjs"
   },
   "devDependencies": {
+    "@types/node": "^26.6.5",
     "typescript": "^5.4.5"
   }
 }

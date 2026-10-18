@@ -41,13 +41,14 @@ This document tracks progress, milestones, and acceptance criteria for the incre
 
 ---
 
-## Milestone 3: Custom MCP Server (Phase 3)
+## Milestone 3: Custom MCP Server (Phase 3 - Completed)
 **Goal**: Strongly typed MCP tools using `@modelcontextprotocol/sdk`.
-- [ ] Inspection tools: `get_design_snapshot`, `get_node_details`, `find_main_headings`, `find_elements_by_text`, `query_design_graph`.
-- [ ] Styling tools: `update_text_style`, `update_fill_color`, `update_font_size`, `update_text_content`.
-- [ ] Layout tools: `move_element`, `resize_element`, `align_elements`, `distribute_elements`.
-- [ ] Verification tools: `verify_element_properties`, `refresh_design_state`.
-- [ ] **Acceptance Criteria**: Tools validate Zod schemas, execute via adapter, and return structured results.
+- [x] Inspection tools: `get_design_snapshot`, `get_node_details`, `find_main_headings`, `find_elements_by_text`, `query_design_graph`.
+- [x] Styling tools: `update_text_style`, `update_fill_color`, `update_font_size`, `update_text_content`, `update_background_color`.
+- [x] Layout tools: `move_element`, `align_elements`, `distribute_elements`.
+- [x] Structure tools: `delete_element` with mandatory user confirmation guard.
+- [x] Verification tools: `verify_element_properties`, `refresh_design_state`, `get_operation_status`.
+- [x] **Acceptance Criteria**: Tools validate Zod schemas, execute via adapter, record audit logs, and return structured results. All 7 tests pass.
 
 ---
 

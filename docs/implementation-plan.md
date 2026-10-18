@@ -30,14 +30,14 @@ This document tracks progress, milestones, and acceptance criteria for the incre
 
 ---
 
-## Milestone 2: Design Knowledge Graph Engine (Phase 2)
+## Milestone 2: Design Knowledge Graph Engine (Phase 2 - Completed)
 **Goal**: Graph representation of elements, properties, hierarchy, and spatial relationships.
-- [ ] Pure TypeScript graph model (`PageNode`, `ElementNode`, `Edge`).
-- [ ] Relationship extractors: `CONTAINS`, `ALIGNED_WITH` (left, center, top, etc.), `NEAR`, `OVERLAPS`, `ABOVE`, `BELOW`, `SAME_STYLE_AS`, `SEMANTICALLY_RELATED_TO`.
-- [ ] Semantic role inference: `heading_main`, `heading_sub`, `body`, `caption`, `logo`, `cta`, `card`, `background`.
-- [ ] Query engine (`findMainHeading()`, `getElementsNear()`, `getAlignedWith()`).
-- [ ] Graph state hashing & staleness detection.
-- [ ] **Acceptance Criteria**: Unit tests verify graph construction, spatial calculations, and role resolution.
+- [x] Pure TypeScript graph model (`PageNode`, `ElementNode`, `Edge`).
+- [x] Relationship extractors: `CONTAINS`, `ALIGNED_WITH` (left, center, top, etc.), `NEAR`, `OVERLAPS`, `ABOVE`, `BELOW`, `SAME_STYLE_AS`, `SEMANTICALLY_RELATED_TO`.
+- [x] Semantic role inference: `heading_main`, `heading_sub`, `body`, `caption`, `logo`, `cta`, `card`, `background`.
+- [x] Query engine (`findMainHeading()`, `getElementsNear()`, `getAlignedWith()`).
+- [x] Graph state hashing & staleness detection.
+- [x] **Acceptance Criteria**: Unit tests verify graph construction, spatial calculations, and role resolution. All 6 tests pass.
 
 ---
 

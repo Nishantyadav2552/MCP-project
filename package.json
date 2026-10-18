@@ -12,7 +12,8 @@
     "test": "npm run test --workspaces --if-present",
     "dev:bridge": "npm run dev --workspace=@canva-cursor/bridge",
     "dev:web": "npm run dev --workspace=@canva-cursor/web",
-    "test:phase1": "node --test tests/integration/phase1.test.mjs"
+    "test:phase1": "node --test tests/integration/phase1.test.mjs",
+    "test:phase2": "node --test tests/unit/knowledge-graph.test.mjs"
   },
   "devDependencies": {
     "typescript": "^5.4.5"

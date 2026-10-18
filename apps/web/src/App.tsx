@@ -1,21 +1,29 @@
 import React, { useState, useEffect } from "react";
-import { Navbar } from "./components/Navbar.js";
+import {
+  Sparkles,
+  Undo2,
+  RotateCcw,
+  MessageSquare,
+  Network,
+  Layers,
+  Clock,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+} from "lucide-react";
 import { CanvasView } from "./components/CanvasView.js";
 import { ChatPanel } from "./components/ChatPanel.js";
 import { GraphVisualizer } from "./components/GraphVisualizer.js";
 import { HistoryPanel } from "./components/HistoryPanel.js";
-import {
-  fetchDesignData,
-  sendAgentInstruction,
-  rollbackLastOperation,
-  resetDesign,
-  fetchHistory,
-} from "./services/api.js";
+import { ElementListPanel } from "./components/ElementListPanel.js";
+import { canvaRuntime } from "./services/canva-runtime.js";
 import { DesignDataResponse, ChatMessage, ClarificationOption } from "./types.js";
 
 export const App: React.FC = () => {
-  const [connected, setConnected] = useState(false);
-  const [activeTab, setActiveTab] = useState<"canvas" | "graph" | "history">("canvas");
+  const [isInCanva, setIsInCanva] = useState(false);
+  const [activeTab, setActiveTab] = useState<"chat" | "graph" | "elements" | "history">("chat");
+  const [showSimulatedCanvas, setShowSimulatedCanvas] = useState(false);
+
   const [designData, setDesignData] = useState<DesignDataResponse | null>(null);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -26,59 +34,30 @@ export const App: React.FC = () => {
     {
       id: "welcome-msg",
       sender: "agent",
-      text: "👋 Welcome to **Canva Cursor**! I am your agentic AI design assistant. Give me instructions like *'Make the main heading blue'*, *'Move heading to the top'*, or *'Align the subtitle with the heading'*. I understand your design structure through a grounded Design Knowledge Graph and execute verified mutations via MCP tools.",
+      text: "👋 Welcome to **Canva Cursor**! I am your integrated Canva App assistant.\n\nType instructions like:\n• *\"Make the main heading blue\"*\n• *\"Move the heading to the top of the page\"*\n• *\"Increase the font size of the title to 36\"*\n• *\"Align the subtitle with the heading\"*\n• *\"Change the background to a light beige\"*\n\nI parse your design structure using a Design Knowledge Graph and execute verified edits through Canva's Design Editing API.",
       timestamp: Date.now(),
     },
   ]);
 
-  // Load initial design and connect WebSocket
+  // Load initial design on mount
   useEffect(() => {
-    let ws: WebSocket | null = null;
+    setIsInCanva(canvaRuntime.isCanvaEnvironment);
+    // If running in standalone browser, default show simulated canvas side-by-side
+    if (!canvaRuntime.isCanvaEnvironment) {
+      setShowSimulatedCanvas(true);
+    }
 
-    const loadData = async () => {
+    const loadInitialState = async () => {
       try {
-        const data = await fetchDesignData();
+        const data = await canvaRuntime.getDesignData();
         setDesignData(data);
-        setConnected(true);
-
-        const hist = await fetchHistory();
-        setHistory(hist.history || []);
+        setHistory(canvaRuntime.getHistory());
       } catch (err) {
-        console.warn("Bridge not currently reachable:", err);
-        setConnected(false);
+        console.error("Error loading Canva design context:", err);
       }
     };
 
-    loadData();
-
-    // Connect WebSocket
-    try {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.host;
-      ws = new WebSocket(`${protocol}//${host}/ws`);
-
-      ws.onopen = () => setConnected(true);
-      ws.onclose = () => setConnected(false);
-      ws.onmessage = async (evt) => {
-        try {
-          const msg = JSON.parse(evt.data);
-          if (msg.type === "OPERATION_FINISHED" || msg.type === "DESIGN_UPDATED" || msg.type === "DESIGN_RESET") {
-            const fresh = await fetchDesignData();
-            setDesignData(fresh);
-            const freshHist = await fetchHistory();
-            setHistory(freshHist.history || []);
-          }
-        } catch {
-          // ignore parsing error
-        }
-      };
-    } catch {
-      // WS fallback
-    }
-
-    return () => {
-      ws?.close();
-    };
+    loadInitialState();
   }, []);
 
   const handleSendMessage = async (text: string, confirmed = false) => {
@@ -90,7 +69,7 @@ export const App: React.FC = () => {
     setIsProcessing(true);
 
     try {
-      const report = await sendAgentInstruction(text, confirmed);
+      const report = await canvaRuntime.executeInstruction(text, confirmed);
 
       setMessages((prev) => [
         ...prev,
@@ -103,12 +82,10 @@ export const App: React.FC = () => {
         },
       ]);
 
-      // Re-fetch fresh design data
-      const updated = await fetchDesignData();
-      setDesignData(updated);
-
-      const updatedHist = await fetchHistory();
-      setHistory(updatedHist.history || []);
+      // Re-fetch fresh design data from Canva
+      const freshData = await canvaRuntime.getDesignData();
+      setDesignData(freshData);
+      setHistory(canvaRuntime.getHistory());
     } catch (err) {
       setMessages((prev) => [
         ...prev,
@@ -131,11 +108,10 @@ export const App: React.FC = () => {
   const handleRollback = async () => {
     setIsRollingBack(true);
     try {
-      await rollbackLastOperation();
-      const updated = await fetchDesignData();
-      setDesignData(updated);
-      const updatedHist = await fetchHistory();
-      setHistory(updatedHist.history || []);
+      await canvaRuntime.rollback();
+      const freshData = await canvaRuntime.getDesignData();
+      setDesignData(freshData);
+      setHistory(canvaRuntime.getHistory());
 
       setMessages((prev) => [
         ...prev,
@@ -155,10 +131,9 @@ export const App: React.FC = () => {
 
   const handleReset = async () => {
     try {
-      const fresh = await resetDesign();
-      setDesignData(fresh);
-      const freshHist = await fetchHistory();
-      setHistory(freshHist.history || []);
+      const freshData = await canvaRuntime.reset();
+      setDesignData(freshData);
+      setHistory(canvaRuntime.getHistory());
       setSelectedElementId(null);
       setMessages((prev) => [
         ...prev,
@@ -175,22 +150,188 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#0B0F19] text-slate-100 overflow-hidden font-sans">
-      {/* Top Navigation */}
-      <Navbar
-        connected={connected}
-        dimensions={designData?.snapshot.page.dimensions}
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        onRollback={handleRollback}
-        onReset={handleReset}
-        isRollingBack={isRollingBack}
-      />
+    <div className="flex h-screen w-screen bg-[#070A12] text-slate-100 overflow-hidden font-sans">
+      {/* 
+        CANVA APP DRAWER CONTAINER
+        This matches Canva's side-panel drawer specification (width 100% inside iframe)
+      */}
+      <div className={`h-full flex flex-col bg-[#0B0F19] border-r border-slate-800 z-30 shadow-2xl transition-all duration-300 ${
+        showSimulatedCanvas ? "w-[440px] shrink-0" : "w-full"
+      }`}>
+        {/* Canva App Header */}
+        <header className="h-14 border-b border-slate-800/90 px-3.5 flex items-center justify-between bg-slate-950/70 select-none">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#00C4CC] to-[#7D2AE8] flex items-center justify-center shadow-md shadow-cyan-500/20">
+              <Sparkles className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-xs tracking-tight text-white">Canva Cursor</span>
+                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">
+                  App SDK
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>{isInCanva ? "Canva Editor Connected" : "Local App Runtime"}</span>
+              </div>
+            </div>
+          </div>
 
-      {/* Main Workspace: Center Workspace + Right Chat Panel */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* Center Tabbed Views */}
-        {activeTab === "canvas" && (
+          {/* Quick Header Actions */}
+          <div className="flex items-center space-x-1.5">
+            {!isInCanva && (
+              <button
+                id="btn-toggle-preview"
+                onClick={() => setShowSimulatedCanvas(!showSimulatedCanvas)}
+                className={`p-1.5 rounded-md border text-xs transition-colors ${
+                  showSimulatedCanvas
+                    ? "bg-cyan-950/60 text-cyan-300 border-cyan-800"
+                    : "bg-slate-900 text-slate-400 border-slate-800 hover:text-white"
+                }`}
+                title={showSimulatedCanvas ? "Hide Simulated Canvas" : "Show Simulated Canvas"}
+              >
+                {showSimulatedCanvas ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            )}
+
+            <button
+              id="btn-undo-rollback"
+              onClick={handleRollback}
+              disabled={isRollingBack}
+              className="p-1.5 rounded-md bg-slate-900 border border-slate-800 text-slate-300 hover:text-amber-400 transition-colors disabled:opacity-40"
+              title="Undo last edit"
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              id="btn-reset-canvas"
+              onClick={handleReset}
+              className="p-1.5 rounded-md bg-slate-900 border border-slate-800 text-slate-300 hover:text-rose-400 transition-colors"
+              title="Reset state"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </header>
+
+        {/* Canva App Sub-Navigation Segmented Control */}
+        <div className="px-3 pt-2.5 pb-2 bg-slate-950/30 border-b border-slate-800/60">
+          <div className="grid grid-cols-4 gap-1 p-0.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-medium">
+            <button
+              id="app-tab-chat"
+              onClick={() => setActiveTab("chat")}
+              className={`py-1.5 rounded-md flex items-center justify-center gap-1 transition-all ${
+                activeTab === "chat"
+                  ? "bg-[#00C4CC]/20 text-cyan-300 border border-cyan-500/30 font-semibold shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <MessageSquare className="w-3 h-3" />
+              <span>Chat</span>
+            </button>
+
+            <button
+              id="app-tab-graph"
+              onClick={() => setActiveTab("graph")}
+              className={`py-1.5 rounded-md flex items-center justify-center gap-1 transition-all ${
+                activeTab === "graph"
+                  ? "bg-[#7D2AE8]/20 text-purple-300 border border-purple-500/30 font-semibold shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Network className="w-3 h-3" />
+              <span>Graph</span>
+            </button>
+
+            <button
+              id="app-tab-elements"
+              onClick={() => setActiveTab("elements")}
+              className={`py-1.5 rounded-md flex items-center justify-center gap-1 transition-all ${
+                activeTab === "elements"
+                  ? "bg-slate-800 text-slate-100 border border-slate-700 font-semibold shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Layers className="w-3 h-3" />
+              <span>Layers</span>
+            </button>
+
+            <button
+              id="app-tab-history"
+              onClick={() => setActiveTab("history")}
+              className={`py-1.5 rounded-md flex items-center justify-center gap-1 transition-all ${
+                activeTab === "history"
+                  ? "bg-slate-800 text-slate-100 border border-slate-700 font-semibold shadow-sm"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Clock className="w-3 h-3" />
+              <span>Audit</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Canva App Active Tab View Area */}
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {activeTab === "chat" && (
+            <ChatPanel
+              messages={messages}
+              isProcessing={isProcessing}
+              onSendMessage={handleSendMessage}
+              onSelectClarificationOption={handleSelectClarificationOption}
+            />
+          )}
+
+          {activeTab === "graph" && (
+            <div className="flex-1 overflow-y-auto">
+              <GraphVisualizer
+                nodes={designData?.graph.nodes || []}
+                edges={designData?.graph.edges || []}
+                stateHash={designData?.graph.stateHash || "none"}
+                onSelectNode={(id) => {
+                  setSelectedElementId(id);
+                  setActiveTab("elements");
+                }}
+              />
+            </div>
+          )}
+
+          {activeTab === "elements" && (
+            <ElementListPanel
+              nodes={designData?.graph.nodes || []}
+              selectedElementId={selectedElementId}
+              onSelectElement={setSelectedElementId}
+              onQuickAction={handleSendMessage}
+            />
+          )}
+
+          {activeTab === "history" && (
+            <HistoryPanel
+              history={history}
+              onRollback={handleRollback}
+              isRollingBack={isRollingBack}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* 
+        SIMULATED CANVAS PREVIEW (VISIBLE IN STANDALONE DEV MODE)
+        In Canva, the real canvas is rendered by Canva itself!
+        In local dev/browser preview, this split view lets developers visually see changes live!
+      */}
+      {showSimulatedCanvas && !isInCanva && (
+        <div className="flex-1 h-full bg-[#070A12] flex flex-col relative overflow-hidden">
+          <div className="h-10 px-4 flex items-center justify-between border-b border-slate-800/80 bg-slate-950/40 text-xs font-mono text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+              <span>Simulated Canva Canvas (Dev Preview)</span>
+            </span>
+            <span>1920 × 1080 px</span>
+          </div>
+
           <CanvasView
             pageDimensions={designData?.snapshot.page.dimensions || { width: 1920, height: 1080 }}
             backgroundColor={designData?.snapshot.page.backgroundColor}
@@ -199,36 +340,8 @@ export const App: React.FC = () => {
             onSelectElement={setSelectedElementId}
             onQuickAction={handleSendMessage}
           />
-        )}
-
-        {activeTab === "graph" && (
-          <GraphVisualizer
-            nodes={designData?.graph.nodes || []}
-            edges={designData?.graph.edges || []}
-            stateHash={designData?.graph.stateHash || "none"}
-            onSelectNode={(id) => {
-              setSelectedElementId(id);
-              setActiveTab("canvas");
-            }}
-          />
-        )}
-
-        {activeTab === "history" && (
-          <HistoryPanel
-            history={history}
-            onRollback={handleRollback}
-            isRollingBack={isRollingBack}
-          />
-        )}
-
-        {/* Right Cursor Chat Panel */}
-        <ChatPanel
-          messages={messages}
-          isProcessing={isProcessing}
-          onSendMessage={handleSendMessage}
-          onSelectClarificationOption={handleSelectClarificationOption}
-        />
-      </div>
+        </div>
+      )}
     </div>
   );
 };

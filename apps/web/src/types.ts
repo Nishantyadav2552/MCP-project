@@ -32,7 +32,7 @@ export interface GraphEdgeJSON {
   target: string;
   type: string;
   provenance: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any> | any;
 }
 
 export interface DesignDataResponse {

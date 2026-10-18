@@ -9,7 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@canva-cursor/agent": "^0.1.0",
+    "@canva-cursor/canva-adapter": "^0.1.0",
+    "@canva-cursor/knowledge-graph": "^0.1.0",
+    "@canva-cursor/mcp-server": "^0.1.0",
     "@canva-cursor/shared": "^0.1.0",
+    "@canva/design": "^2.13.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.378.0",
     "react": "^18.3.1",

@@ -43,18 +43,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   return (
-    <div className="w-[420px] h-full border-l border-slate-800 bg-[#0B0F19] flex flex-col z-20 shadow-2xl">
-      {/* Chat Header */}
-      <div className="h-12 border-b border-slate-800/80 px-4 flex items-center justify-between bg-slate-950/40">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-cyan-400" />
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-200">Cursor Assistant</h2>
-        </div>
-        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-400">
-          Agentic Mode
-        </span>
-      </div>
-
+    <div className="w-full h-full flex flex-col z-20">
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => (

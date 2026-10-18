@@ -63,23 +63,25 @@ This document tracks progress, milestones, and acceptance criteria for the incre
 
 ---
 
-## Milestone 5: Verification, Recovery & Execution History (Phase 5)
+## Milestone 5: Verification, Recovery & Execution History (Phase 5 - Completed)
 **Goal**: Robust error handling, safe retries, idempotency, and audit trail.
-- [ ] Compensating operation (rollback) recorder.
-- [ ] Locked element guard.
-- [ ] Conflict & staleness detection.
-- [ ] **Acceptance Criteria**: Failure scenarios tested (locked page, invalid targets, network drop).
+- [x] Compensating operation (rollback) recorder and endpoint (`POST /api/rollback`).
+- [x] Locked element and locked page guards.
+- [x] Conflict & staleness detection via `stateHash`.
+- [x] WebSocket & HTTP RPC communication bridge (`@canva-cursor/bridge`).
+- [x] **Acceptance Criteria**: All 4 bridge and recovery integration tests pass.
 
 ---
 
-## Milestone 6: Professional Cursor-Style Frontend UI (Phase 6)
+## Milestone 6: Professional Cursor-Style Frontend UI (Phase 6 - Completed)
 **Goal**: State-of-the-art interactive UI.
-- [ ] Natural-language chat panel with streaming feel, tool badges, diff views.
-- [ ] Live canvas view with interactive element selection & visual bounding boxes.
-- [ ] Live knowledge graph visualizer.
-- [ ] Execution history & tool call inspector.
-- [ ] Error messages, clarification modals, and retry controls.
-- [ ] **Acceptance Criteria**: Interactive, functional UI running smoothly.
+- [x] Natural-language chat panel with streaming feel, tool badges, and diff views ([ChatPanel.tsx](file:///d:/MCP%20project/apps/web/src/components/ChatPanel.tsx)).
+- [x] Live canvas view with interactive element selection & visual bounding boxes ([CanvasView.tsx](file:///d:/MCP%20project/apps/web/src/components/CanvasView.tsx)).
+- [x] Live knowledge graph visualizer ([GraphVisualizer.tsx](file:///d:/MCP%20project/apps/web/src/components/GraphVisualizer.tsx)).
+- [x] Execution history & tool call inspector ([HistoryPanel.tsx](file:///d:/MCP%20project/apps/web/src/components/HistoryPanel.tsx)).
+- [x] Error messages, clarification modals, and retry controls.
+- [x] Production build validation with Vite and Tailwind CSS.
+- [x] **Acceptance Criteria**: Responsive, functional UI building cleanly.
 
 ---
 

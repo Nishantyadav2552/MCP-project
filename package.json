@@ -1,0 +1,35 @@
+{
+  "name": "canva-cursor",
+  "description": "An agentic AI design editor inside Canva",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  },
+  "scripts": {
+    "start": "canva apps start",
+    "build": "canva apps build",
+    "lint": "eslint src --ext .ts,.tsx",
+    "type-check": "tsc --noEmit",
+    "backend:dev": "ts-node-dev --respawn --transpile-only backend/server.ts",
+    "backend:build": "tsc -p tsconfig.backend.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@canva/app-ui-kit": "^5.15.0",
+    "@canva/design": "^2.13.1",
+    "@canva/asset": "^2.3.1",
+    "@canva/app-hooks": "0.0.0-beta.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@canva/app-scripts": "^1.1.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "~5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

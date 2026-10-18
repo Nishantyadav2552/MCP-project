@@ -1,0 +1,6 @@
+/* Canva starter kit expects this file at styles/components.css */
+
+.scrollContainer {
+  overflow-y: auto;
+  padding: 8px;
+}

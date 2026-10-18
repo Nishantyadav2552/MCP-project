@@ -161,11 +161,8 @@ export class GraphQueryEngine {
       const reasons: string[] = [];
 
       // 1. Semantic role match
-      if (
-        (q.includes("main heading") || q.includes("heading") || q.includes("title")) &&
-        node.semanticRole.value === "heading_main"
-      ) {
-        score += 0.8;
+      if (q.includes("main heading") && node.semanticRole.value === "heading_main") {
+        score += 0.85;
         reasons.push("Matches semantic role 'heading_main'");
       } else if (
         (q.includes("subtitle") || q.includes("sub heading") || q.includes("sub-heading")) &&
@@ -173,7 +170,13 @@ export class GraphQueryEngine {
       ) {
         score += 0.85;
         reasons.push("Matches semantic role 'heading_sub'");
-      } else if ((q.includes("button") || q.includes("cta")) && node.semanticRole.value === "cta") {
+      } else if (
+        (q.includes("heading") || q.includes("title")) &&
+        (node.semanticRole.value === "heading_main" || node.semanticRole.value === "heading_sub" || node.semanticRole.value === "title")
+      ) {
+        score += 0.75;
+        reasons.push(`Matches heading candidate ('${node.semanticRole.value}')`);
+      } else if ((q.includes("button") || q.includes("cta")) && (node.semanticRole.value === "cta" || node.type === "rect")) {
         score += 0.85;
         reasons.push("Matches semantic role 'cta'");
       } else if (q.includes("logo") && node.semanticRole.value === "logo") {

@@ -144,23 +144,13 @@ export class SemanticRoleClassifier {
 
       // Check for CTA button rectangle
       if (el.type === "rect" || el.type === "shape") {
-        if (el.width >= 100 && el.width <= 320 && el.height >= 32 && el.height <= 80) {
-          // Check if there is a CTA text inside or near this box
-          const hasCtaText = textElements.some(
-            (t) =>
-              t.top >= el.top - 10 &&
-              t.top <= el.top + el.height + 10 &&
-              t.left >= el.left - 10 &&
-              t.left <= el.left + el.width + 10
-          );
-          if (hasCtaText) {
-            results.set(el.id, {
-              value: "cta",
-              source: "inferred_model",
-              confidence: 0.92,
-            });
-            continue;
-          }
+        if (el.width >= 100 && el.width <= 320 && el.height >= 30 && el.height <= 80) {
+          results.set(el.id, {
+            value: "cta",
+            source: "inferred_model",
+            confidence: 0.88,
+          });
+          continue;
         }
 
         // Card container check

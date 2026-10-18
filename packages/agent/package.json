@@ -1,0 +1,21 @@
+{
+  "name": "@canva-cursor/agent",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test tests/**/*.test.mjs"
+  },
+  "dependencies": {
+    "@canva-cursor/canva-adapter": "^0.1.0",
+    "@canva-cursor/knowledge-graph": "^0.1.0",
+    "@canva-cursor/mcp-server": "^0.1.0",
+    "@canva-cursor/shared": "^0.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

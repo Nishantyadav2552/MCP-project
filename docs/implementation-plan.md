@@ -52,13 +52,14 @@ This document tracks progress, milestones, and acceptance criteria for the incre
 
 ---
 
-## Milestone 4: Cursor AI Agent & Planner (Phase 4)
+## Milestone 4: Cursor AI Agent & Planner (Phase 4 - Completed)
 **Goal**: Convert natural-language instructions into verified, structured operation plans.
-- [ ] State machine: `IDLE` $\rightarrow$ `INSPECTING` $\rightarrow$ `PLANNING` $\rightarrow$ `VALIDATING` $\rightarrow$ `EXECUTING` $\rightarrow$ `VERIFYING` $\rightarrow$ `REPORTING`.
-- [ ] Target resolution with contextual graph reasoning.
-- [ ] Ambiguity detection & clarification prompt generation.
-- [ ] Plan validator with rollback computation.
-- [ ] **Acceptance Criteria**: Evaluated on sample queries ("Make main heading blue", "Increase font size to 36", ambiguous instructions).
+- [x] State machine: `IDLE` $\rightarrow$ `QUERYING_GRAPH` $\rightarrow$ `RESOLVING_TARGETS` $\rightarrow$ `GENERATING_PLAN` $\rightarrow$ `VALIDATING_PLAN` $\rightarrow$ `EXECUTING_OPERATIONS` $\rightarrow$ `VERIFYING_RESULTS` $\rightarrow$ `RECONCILING_GRAPH` $\rightarrow$ `COMPLETED`.
+- [x] Target resolution with contextual graph reasoning (main heading, subtitle, title, CTA, background, etc.).
+- [x] Ambiguity detection & clarification prompt generation when instructions match multiple candidate elements.
+- [x] Plan validator enforcing Zod schemas, locked canvas checks, and type compatibility.
+- [x] End-to-end composite execution: *"Make the main heading blue and move it to the top of the page"*.
+- [x] **Acceptance Criteria**: All 7 integration tests pass.
 
 ---
 

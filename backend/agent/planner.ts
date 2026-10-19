@@ -27,7 +27,7 @@ const TextFormattingSchema = z.object({
 });
 
 const RangeSchema = z.object({
-  start: z.number().int().nonnegative(),
+  index: z.number().int().nonnegative(),
   length: z.number().int().positive(),
 });
 
@@ -56,13 +56,6 @@ const MoveElementOpSchema = z.object({
   left: z.number(),
 });
 
-const ResizeElementOpSchema = z.object({
-  type: z.literal("resize_element"),
-  elementId: z.string().min(1),
-  width: z.number().positive(),
-  height: z.number().positive().optional(),
-});
-
 const ChangeLayerOrderOpSchema = z.object({
   type: z.literal("change_layer_order"),
   elementId: z.string().min(1),
@@ -82,15 +75,34 @@ const UpdateTextContentOpSchema = z.object({
   preserveFormatting: z.boolean(),
 });
 
-const OperationSchema = z.discriminatedUnion("type", [
+const GroupElementsOpSchema = z.object({
+  type: z.literal("group_elements"),
+  elementIds: z.array(z.string().min(1)).min(2),
+});
+
+const UngroupElementOpSchema = z.object({
+  type: z.literal("ungroup_element"),
+  elementId: z.string().min(1),
+});
+
+const DuplicateElementOpSchema = z.object({
+  type: z.literal("duplicate_element"),
+  elementId: z.string().min(1),
+  offsetTop: z.number().optional(),
+  offsetLeft: z.number().optional(),
+});
+
+export const OperationSchema = z.discriminatedUnion("type", [
   UpdateTextStyleOpSchema,
   UpdateFillColorOpSchema,
   UpdateBackgroundColorOpSchema,
   MoveElementOpSchema,
-  ResizeElementOpSchema,
   ChangeLayerOrderOpSchema,
   DeleteElementOpSchema,
   UpdateTextContentOpSchema,
+  GroupElementsOpSchema,
+  UngroupElementOpSchema,
+  DuplicateElementOpSchema,
 ]);
 
 const PlanResponseSchema = z.object({
@@ -136,6 +148,13 @@ function validateElementIds(
         invalid.push(op.elementId);
       }
     }
+    if ("elementIds" in op && Array.isArray(op.elementIds)) {
+      for (const id of op.elementIds) {
+        if (!graph.nodes.has(id)) {
+          invalid.push(id);
+        }
+      }
+    }
     if (op.type === "change_layer_order" && op.relativeElementId) {
       if (!graph.nodes.has(op.relativeElementId)) {
         invalid.push(op.relativeElementId);
@@ -171,7 +190,7 @@ export async function generatePlan(
   instruction: string,
   graph: DesignGraph,
   conversationHistory: Array<{ role: "user" | "assistant"; content: string }>,
-  sessionId: string
+  _sessionId: string
 ): Promise<PlannerResult> {
   const designSummary = summarizeGraphForPrompt(graph);
   const userPrompt = buildPlanningPrompt(designSummary, instruction, conversationHistory);
@@ -233,6 +252,7 @@ export async function generatePlan(
     planId: response.planId,
     operations,
     description: response.description,
+    snapshotElementCount: graph.sourceSnapshot.elements.length,
   };
 
   return { type: "plan", plan, explanation: response.explanation };

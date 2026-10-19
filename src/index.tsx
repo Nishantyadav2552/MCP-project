@@ -5,17 +5,39 @@
  * It bootstraps the React app inside the Canva editor iframe.
  */
 
-import React from "react";
+import "@canva/app-ui-kit/styles.css";
+import "styles/components.css";
+
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { AppUiProvider, TestAppUiProvider } from "@canva/app-ui-kit";
 import { App } from "./app";
 
-const container = document.getElementById("root");
+// Ensure root container exists inside the Canva iframe
+let container = document.getElementById("root");
 if (!container) {
-  throw new Error("Root element not found. Make sure the HTML template includes <div id='root'>");
+  container = document.createElement("div");
+  container.id = "root";
+  document.body.appendChild(container);
 }
 
+// Reset margins and ensure full height in Canva panel
+document.documentElement.style.height = "100%";
+document.documentElement.style.margin = "0";
+document.body.style.height = "100%";
+document.body.style.margin = "0";
+container.style.height = "100%";
+container.style.display = "flex";
+container.style.flexDirection = "column";
+
+// Use official AppUiProvider when inside Canva, fallback to TestAppUiProvider outside Canva
+const isInsideCanva = typeof window !== "undefined" && Boolean((window as unknown as { __canva__?: { uiKit?: unknown } }).__canva__?.uiKit);
+const Provider = isInsideCanva ? AppUiProvider : TestAppUiProvider;
+
 createRoot(container).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
+  <StrictMode>
+    <Provider>
+      <App />
+    </Provider>
+  </StrictMode>
 );

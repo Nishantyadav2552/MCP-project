@@ -7,9 +7,10 @@ export default defineConfig({
     environment: "node",
   },
   resolve: {
-    // Allow tests to resolve backend dependencies (zod, etc.)
+    // Allow tests to resolve backend dependencies (zod, etc.) and mock Canva runtime
     alias: {
       "zod": path.resolve(__dirname, "backend/node_modules/zod"),
+      "@canva/design": path.resolve(__dirname, "tests/mocks/canva-design-mock.ts"),
     },
   },
 });

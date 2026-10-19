@@ -2,11 +2,10 @@
  * snapshot-builder.ts
  *
  * Reads the current page's design state inside an openDesign session and
- * produces a plain JSON-serializable DesignSnapshot that can be sent to the
- * backend agent.
+ * produces a plain JSON-serializable DesignSnapshot to send to the backend.
  *
- * IMPORTANT: This module runs in the browser inside the Canva app iframe.
- * It must never import backend-only modules or use Node.js APIs.
+ * Runs in the browser inside the Canva app iframe.
+ * Must not import backend-only modules or use Node.js APIs.
  */
 
 import { openDesign, type DesignEditing } from "@canva/design";
@@ -26,28 +25,40 @@ import type {
 
 // ─── Fill serialization ───────────────────────────────────────────────────────
 
-function serializeFill(
-  colorContainer: DesignEditing.ColorContainer | undefined,
-  mediaContainer: DesignEditing.MediaContainer | undefined
-): SerializedFill {
-  const colorRef = colorContainer?.ref;
+function serializeFill(fill: DesignEditing.Fill | undefined): SerializedFill {
+  if (!fill) return { type: "none" };
+
+  const colorRef = fill.colorContainer?.ref;
   if (colorRef?.type === "solid") {
     return { type: "solid", color: colorRef.color };
   }
-  const mediaRef = mediaContainer?.ref;
+
+  const mediaRef = fill.mediaContainer?.ref;
   if (mediaRef?.type === "image") {
     return { type: "image", imageRef: mediaRef.imageRef };
   }
   if (mediaRef?.type === "video") {
     return { type: "video", videoRef: mediaRef.videoRef };
   }
+
   return { type: "none" };
+}
+
+// ─── Unique element IDs ───────────────────────────────────────────────────────
+// The Design Editing API doesn't expose a stable string ID on Element objects.
+// We assign indices as stable IDs within a single snapshot session.
+// These IDs are used to correlate plan operations back to live elements during
+// the same openDesign callback — they are NOT persistent across sessions.
+
+function makeElementId(index: number): string {
+  return `el-${index}`;
 }
 
 // ─── Element serialization ────────────────────────────────────────────────────
 
 function serializeTextElement(
-  el: DesignEditing.TextElement
+  el: DesignEditing.TextElement,
+  id: string
 ): TextElementSnapshot {
   const regions: TextRegion[] = el.text.readTextRegions().map((region) => ({
     text: region.text,
@@ -62,7 +73,7 @@ function serializeTextElement(
   }));
 
   return {
-    id: (el as unknown as { id: string }).id ?? "",
+    id,
     type: "text",
     top: el.top,
     left: el.left,
@@ -77,10 +88,11 @@ function serializeTextElement(
 }
 
 function serializeRectElement(
-  el: DesignEditing.RectElement
+  el: DesignEditing.RectElement,
+  id: string
 ): RectElementSnapshot {
   return {
-    id: (el as unknown as { id: string }).id ?? "",
+    id,
     type: "rect",
     top: el.top,
     left: el.left,
@@ -89,23 +101,25 @@ function serializeRectElement(
     rotation: el.rotation,
     transparency: el.transparency ?? 0,
     locked: el.locked,
-    fill: serializeFill(el.fill.colorContainer?.ref ? el.fill.colorContainer : undefined, el.fill.mediaContainer?.ref ? el.fill.mediaContainer : undefined),
+    fill: serializeFill(el.fill),
   };
 }
 
 function serializeShapeElement(
-  el: DesignEditing.ShapeElement
+  el: DesignEditing.ShapeElement,
+  id: string
 ): ShapeElementSnapshot {
   const firstPath = el.paths.toArray()[0];
   const primaryFill: SerializedFill = firstPath
-    ? serializeFill(
-        firstPath.fill.colorContainer?.ref ? firstPath.fill.colorContainer : undefined,
-        firstPath.fill.mediaContainer?.ref ? firstPath.fill.mediaContainer : undefined
-      )
+    ? (() => {
+        const colorRef = firstPath.fill.colorContainer?.ref;
+        if (colorRef?.type === "solid") return { type: "solid" as const, color: colorRef.color };
+        return { type: "none" as const };
+      })()
     : { type: "none" };
 
   return {
-    id: (el as unknown as { id: string }).id ?? "",
+    id,
     type: "shape",
     top: el.top,
     left: el.left,
@@ -119,16 +133,18 @@ function serializeShapeElement(
 }
 
 function serializeGroupElement(
-  el: DesignEditing.GroupElement
+  el: DesignEditing.GroupElement,
+  id: string,
+  indexOffset: number
 ): GroupElementSnapshot {
+  // Group children are indexed relative to their position in the contents list
   const childIds: string[] = [];
-  el.contents.forEach((child) => {
-    const childId = (child as unknown as { id: string }).id;
-    if (childId) childIds.push(childId);
+  el.contents.toArray().forEach((_child, i) => {
+    childIds.push(makeElementId(indexOffset + i));
   });
 
   return {
-    id: (el as unknown as { id: string }).id ?? "",
+    id,
     type: "group",
     top: el.top,
     left: el.left,
@@ -142,10 +158,11 @@ function serializeGroupElement(
 }
 
 function serializeEmbedElement(
-  el: DesignEditing.EmbedElement
+  el: DesignEditing.EmbedElement,
+  id: string
 ): EmbedElementSnapshot {
   return {
-    id: (el as unknown as { id: string }).id ?? "",
+    id,
     type: "embed",
     top: el.top,
     left: el.left,
@@ -158,33 +175,50 @@ function serializeEmbedElement(
   };
 }
 
-function serializeElement(el: DesignEditing.Element): ElementSnapshot {
-  if (el.type === "text") return serializeTextElement(el);
-  if (el.type === "rect") return serializeRectElement(el);
-  if (el.type === "shape") return serializeShapeElement(el);
-  if (el.type === "group") return serializeGroupElement(el);
-  if (el.type === "embed") return serializeEmbedElement(el);
+function serializeElement(
+  el: DesignEditing.AbsoluteElement,
+  index: number
+): ElementSnapshot {
+  const id = makeElementId(index);
 
-  // Fallback for unsupported element types
-  const unsupported: UnsupportedElementSnapshot = {
-    id: (el as unknown as { id: string }).id ?? "",
-    type: "unsupported",
-    top: el.top,
-    left: el.left,
-    width: el.width,
-    height: el.height,
-    rotation: el.rotation,
-    transparency: (el as unknown as { transparency?: number }).transparency ?? 0,
-    locked: el.locked,
-  };
-  return unsupported;
+  switch (el.type) {
+    case "text":
+      return serializeTextElement(el, id);
+    case "rect":
+      return serializeRectElement(el, id);
+    case "shape":
+      return serializeShapeElement(el, id);
+    case "group":
+      return serializeGroupElement(el, id, index + 1);
+    case "embed":
+      return serializeEmbedElement(el, id);
+    default: {
+      // UnsupportedElement
+      const unsupported: UnsupportedElementSnapshot = {
+        id,
+        type: "unsupported",
+        top: el.top,
+        left: el.left,
+        width: el.width,
+        height: el.height,
+        rotation: el.rotation,
+        transparency: el.transparency ?? 0,
+        locked: el.locked,
+      };
+      return unsupported;
+    }
+  }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Opens the current page in read-only mode and builds a DesignSnapshot.
- * This is a full snapshot — call sparingly; use delta updates where possible.
+ * Opens the current page and builds a DesignSnapshot.
+ *
+ * IMPORTANT: The element IDs in this snapshot are index-based (el-0, el-1…)
+ * and are only valid for the duration of the same canva apps start session.
+ * The plan executor uses these same IDs to look up elements by index when
+ * executing operations in a subsequent openDesign call.
  */
 export async function buildCurrentPageSnapshot(): Promise<DesignSnapshot | null> {
   let result: DesignSnapshot | null = null;
@@ -205,21 +239,14 @@ export async function buildCurrentPageSnapshot(): Promise<DesignSnapshot | null>
       return;
     }
 
-    // Serialize background
-    let background: PageBackground | null = null;
-    if (page.background) {
-      background = {
-        fill: serializeFill(
-          page.background.colorContainer?.ref ? page.background.colorContainer : undefined,
-          page.background.mediaContainer?.ref ? page.background.mediaContainer : undefined
-        ),
-      };
-    }
+    const background: PageBackground | null = page.background
+      ? { fill: serializeFill(page.background) }
+      : null;
 
-    // Serialize all elements
-    const elements: ElementSnapshot[] = page.elements
-      .toArray()
-      .map(serializeElement);
+    const allElements = page.elements.toArray();
+    const elements: ElementSnapshot[] = allElements.map((el, i) =>
+      serializeElement(el, i)
+    );
 
     result = {
       pageId: page.id,

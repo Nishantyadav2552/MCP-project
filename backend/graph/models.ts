@@ -7,7 +7,6 @@
 
 import type {
   ElementSnapshot,
-  TextElementSnapshot,
   DesignSnapshot,
 } from "../../src/shared/types";
 

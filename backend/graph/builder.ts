@@ -16,7 +16,6 @@ import type {
   DesignGraph,
   GraphNode,
   SemanticAnnotation,
-  SemanticRole,
 } from "./models";
 import { computeRelationships } from "./relationships";
 

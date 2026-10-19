@@ -17,10 +17,16 @@ const TextFormattingSchema = z.object({
   decoration: z.enum(["none", "underline", "line-through"]).optional(),
 });
 
+const RangeSchema = z.object({
+  index: z.number().int().nonnegative(),
+  length: z.number().int().positive(),
+});
+
 const UpdateTextStyleOpSchema = z.object({
   type: z.literal("update_text_style"),
   elementId: z.string().min(1),
   formatting: TextFormattingSchema,
+  range: RangeSchema.optional(),
 });
 
 const MoveElementOpSchema = z.object({
@@ -74,6 +80,12 @@ describe("UpdateTextStyle validation", () => {
       formatting: {},
     };
     expect(UpdateTextStyleOpSchema.safeParse(op).success).toBe(true);
+  });
+
+  it("rejects range with start instead of index", () => {
+    const schema = z.object({ index: z.number().int().nonnegative(), length: z.number().int().positive() });
+    expect(schema.safeParse({ start: 0, length: 5 }).success).toBe(false);
+    expect(schema.safeParse({ index: 0, length: 5 }).success).toBe(true);
   });
 });
 

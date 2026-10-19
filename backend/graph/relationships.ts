@@ -12,7 +12,7 @@
  */
 
 import type { DesignSnapshot, ElementSnapshot } from "../../src/shared/types";
-import type { GraphNode, GraphEdge, RelationshipType } from "./models";
+import type { GraphNode, RelationshipType } from "./models";
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
 

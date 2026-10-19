@@ -5,9 +5,13 @@
  * It must remain lightweight; the actual UI is in ChatPanel.
  */
 
-import React from "react";
 import { ChatPanel } from "./components/ChatPanel";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export function App() {
-  return <ChatPanel />;
+  return (
+    <ErrorBoundary>
+      <ChatPanel />
+    </ErrorBoundary>
+  );
 }

@@ -25,14 +25,16 @@ Your job is to produce a structured OPERATION PLAN in JSON.
 
 ## Operation types
 
-- update_text_style: { elementId, formatting: { color?, fontSize?, fontWeight?, fontStyle?, textAlign?, decoration? }, range?: { start, length } }
+- update_text_style: { elementId, formatting: { color?, fontSize?, fontWeight?, fontStyle?, textAlign?, decoration? }, range?: { index, length } }
 - update_fill_color: { elementId, color }
 - update_background_color: { color }
 - move_element: { elementId, top, left }
-- resize_element: { elementId, width, height? }
 - change_layer_order: { elementId, relativeElementId, direction: "before"|"after" }
 - delete_element: { elementId }
 - update_text_content: { elementId, newText, preserveFormatting: true|false }
+- group_elements: { elementIds: ["el-N", "el-M", ...] }  (minimum 2 elements)
+- ungroup_element: { elementId }  (element must be a group)
+- duplicate_element: { elementId, offsetTop?, offsetLeft? }
 
 ## Output format
 

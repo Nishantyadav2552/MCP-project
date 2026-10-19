@@ -128,7 +128,7 @@ export interface UpdateTextStyleOp {
   /** Formatting to apply to the entire text content */
   formatting: TextFormatting;
   /** Optionally restrict to a character range */
-  range?: { start: number; length: number };
+  range?: { index: number; length: number };
 }
 
 export interface UpdateFillColorOp {
@@ -147,13 +147,6 @@ export interface MoveElementOp {
   elementId: string;
   top: number;
   left: number;
-}
-
-export interface ResizeElementOp {
-  type: "resize_element";
-  elementId: string;
-  width: number;
-  height?: number; // omit for text elements (auto-sized)
 }
 
 export interface ChangeLayerOrderOp {
@@ -176,15 +169,34 @@ export interface UpdateTextContentOp {
   preserveFormatting: boolean;
 }
 
+export interface GroupElementsOp {
+  type: "group_elements";
+  elementIds: string[]; // minimum 2 IDs
+}
+
+export interface UngroupElementOp {
+  type: "ungroup_element";
+  elementId: string; // must resolve to a group element
+}
+
+export interface DuplicateElementOp {
+  type: "duplicate_element";
+  elementId: string;
+  offsetTop?: number;  // pixels to offset the copy below source; default 20
+  offsetLeft?: number; // pixels to offset the copy right of source; default 20
+}
+
 export type DesignOperation =
   | UpdateTextStyleOp
   | UpdateFillColorOp
   | UpdateBackgroundColorOp
   | MoveElementOp
-  | ResizeElementOp
   | ChangeLayerOrderOp
   | DeleteElementOp
-  | UpdateTextContentOp;
+  | UpdateTextContentOp
+  | GroupElementsOp
+  | UngroupElementOp
+  | DuplicateElementOp;
 
 /**
  * A validated, ordered plan produced by the backend agent.
@@ -197,6 +209,8 @@ export interface OperationPlan {
   description: string;
   /** Operations that must succeed before later ones can run */
   dependencies?: Array<{ operationIndex: number; dependsOnIndex: number }>;
+  /** Number of elements on the page when snapshot was taken */
+  snapshotElementCount: number;
 }
 
 // ─── Agent Request / Response ────────────────────────────────────────────────

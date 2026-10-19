@@ -1,31 +1,28 @@
 /**
  * ChatPanel.tsx
  *
- * The main Canva Cursor chat interface.
- * Rendered as the primary panel inside the Canva editor.
+ * The main Canva Cursor chat interface, rendered inside the Canva editor panel.
+ * Uses only verified @canva/app-ui-kit v5 component APIs.
  */
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Box,
   Button,
-  FormField,
-  MultilineInput,
   Rows,
   Text,
+  Title,
   Alert,
-  LoadingIndicator,
-  Badge,
+  MultilineInput,
 } from "@canva/app-ui-kit";
 import type {
   AgentRequest,
-  AgentResponse,
   ExecutionResult,
   OperationResult,
   OperationPlan,
 } from "../shared/types";
 import { buildCurrentPageSnapshot } from "../canva/snapshot-builder";
 import { executePlan } from "../canva/design-editor";
+import { verifyResults } from "../canva/verifier";
 import { requestPlan, reportResults } from "../services/agent-client";
 import { MessageBubble, type Message } from "./MessageBubble";
 
@@ -34,8 +31,7 @@ type AppPhase =
   | "reading_design"
   | "planning"
   | "executing"
-  | "reporting"
-  | "done";
+  | "reporting";
 
 export function ChatPanel() {
   const [messages, setMessages] = useState<Message[]>([
@@ -50,11 +46,27 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [phase, setPhase] = useState<AppPhase>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [sessionId] = useState(() => `session-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const [sessionId, setSessionId] = useState(
+    () => `session-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
   const [lastPlanId, setLastPlanId] = useState<string | undefined>(undefined);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to latest message
+  const handleClear = useCallback(() => {
+    setMessages([
+      {
+        id: "welcome",
+        role: "assistant",
+        content:
+          "Hi! I'm Canva Cursor. Tell me what you'd like to change in your design.",
+        timestamp: Date.now(),
+      },
+    ]);
+    setSessionId(`session-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    setLastPlanId(undefined);
+    setError(null);
+  }, []);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -62,7 +74,11 @@ export function ChatPanel() {
   const addMessage = useCallback((msg: Omit<Message, "id" | "timestamp">) => {
     setMessages((prev) => [
       ...prev,
-      { ...msg, id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`, timestamp: Date.now() },
+      {
+        ...msg,
+        id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        timestamp: Date.now(),
+      },
     ]);
   }, []);
 
@@ -72,29 +88,31 @@ export function ChatPanel() {
 
     setInput("");
     setError(null);
-
-    // Show user's message
     addMessage({ role: "user", content: instruction });
 
     try {
       // Step 1: Read current design
       setPhase("reading_design");
-      addMessage({ role: "system", content: "Reading your design…" });
 
       const snapshot = await buildCurrentPageSnapshot();
       if (!snapshot) {
-        throw new Error("Could not read the current page. Make sure you have a design open.");
+        throw new Error(
+          "Could not read the current page. Make sure you have a design open."
+        );
       }
       if (snapshot.pageType === "unsupported") {
-        throw new Error("This page type isn't supported. Canva Cursor works with standard design pages (not Docs or whiteboards).");
+        throw new Error(
+          "This page type isn't supported. Canva Cursor works with standard design pages (not Docs or whiteboards)."
+        );
       }
       if (snapshot.pageLocked) {
-        throw new Error("This page is locked. Unlock it in Canva before making changes.");
+        throw new Error(
+          "This page is locked. Unlock it in Canva before making changes."
+        );
       }
 
-      // Step 2: Send to backend agent for planning
+      // Step 2: Send to backend for planning
       setPhase("planning");
-
       const request: AgentRequest = {
         sessionId,
         instruction,
@@ -102,9 +120,8 @@ export function ChatPanel() {
         priorPlanId: lastPlanId,
       };
 
-      const agentResponse: AgentResponse = await requestPlan(request);
+      const agentResponse = await requestPlan(request);
 
-      // Handle clarification requests
       if (agentResponse.requiresClarification && agentResponse.clarificationNeeded) {
         addMessage({ role: "assistant", content: agentResponse.clarificationNeeded });
         setPhase("idle");
@@ -118,20 +135,16 @@ export function ChatPanel() {
       }
 
       const plan: OperationPlan = agentResponse.plan;
+      plan.snapshotElementCount = snapshot.elements.length;
       setLastPlanId(plan.planId);
 
-      addMessage({
-        role: "system",
-        content: `Plan ready: ${plan.description} (${plan.operations.length} operation${plan.operations.length !== 1 ? "s" : ""})`,
-      });
-
-      // Step 3: Execute plan inside Canva
+      // Step 3: Execute inside Canva
       setPhase("executing");
-      addMessage({ role: "system", content: "Applying changes to your design…" });
 
       const operationResults: OperationResult[] = await executePlan(plan);
+      const verifiedResults = await verifyResults(plan, operationResults);
 
-      // Step 4: Read updated design, report results to backend
+      // Step 4: Report results to backend, refresh graph
       setPhase("reporting");
       const updatedSnapshot = await buildCurrentPageSnapshot();
       if (!updatedSnapshot) {
@@ -141,37 +154,40 @@ export function ChatPanel() {
       const executionResult: ExecutionResult = {
         sessionId,
         planId: plan.planId,
-        operationResults,
+        operationResults: verifiedResults,
         updatedSnapshot,
         executedAt: Date.now(),
       };
 
       const { message: finalMessage } = await reportResults(executionResult);
 
-      // Show outcome summary
-      const succeeded = operationResults.filter((r) => r.status === "succeeded" || r.status === "succeeded_unverified").length;
-      const failed = operationResults.filter((r) => r.status === "failed").length;
-      const skipped = operationResults.filter((r) => r.status === "skipped").length;
+      const succeeded = verifiedResults.filter(
+        (r) => r.status === "succeeded" || r.status === "succeeded_unverified"
+      ).length;
+      const failed = verifiedResults.filter((r) => r.status === "failed").length;
+      const skipped = verifiedResults.filter((r) => r.status === "skipped").length;
 
       addMessage({
         role: "assistant",
         content: finalMessage,
-        operationSummary: { succeeded, failed, skipped, total: operationResults.length },
+        operationSummary: {
+          succeeded,
+          failed,
+          skipped,
+          total: verifiedResults.length,
+        },
       });
-
-      setPhase("done");
-      // Allow new instructions
-      setTimeout(() => setPhase("idle"), 500);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
       addMessage({ role: "error", content: msg });
+    } finally {
       setPhase("idle");
     }
   }, [input, phase, sessionId, lastPlanId, addMessage]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSubmit();
@@ -180,19 +196,27 @@ export function ChatPanel() {
     [handleSubmit]
   );
 
-  const isLoading = phase !== "idle" && phase !== "done";
+  const isLoading = phase !== "idle";
 
   return (
-    <Rows spacing="2u">
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: 12, gap: 8, boxSizing: "border-box" }}>
       {/* Header */}
-      <Box padding="1u">
-        <Text variant="heading" size="medium">
-          Canva Cursor
-        </Text>
-        <Text size="small" tone="tertiary">
-          AI design editor · {phase === "idle" ? "Ready" : phaseLabel(phase)}
-        </Text>
-      </Box>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <Title size="small">Canva Cursor</Title>
+          <Text size="small" tone="tertiary">
+            {isLoading ? phaseLabel(phase) + "…" : "Ready — tell me what to change"}
+          </Text>
+        </div>
+        <Button
+          variant="secondary"
+          size="small"
+          onClick={handleClear}
+          disabled={isLoading}
+        >
+          Clear
+        </Button>
+      </div>
 
       {/* Error banner */}
       {error && (
@@ -202,54 +226,53 @@ export function ChatPanel() {
       )}
 
       {/* Message list */}
-      <Box
-        padding="1u"
-        style={{ minHeight: 300, maxHeight: 450, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          minHeight: 200,
+        }}
       >
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
         {isLoading && (
-          <Box padding="1u" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <LoadingIndicator size="small" />
-            <Text size="small" tone="secondary">
-              {phaseLabel(phase)}…
-            </Text>
-          </Box>
+          <div style={{ padding: "4px 8px" }}>
+            <Text size="small" tone="secondary">{phaseLabel(phase)}…</Text>
+          </div>
         )}
         <div ref={messagesEndRef} />
-      </Box>
+      </div>
 
       {/* Input area */}
-      <Box padding="1u">
-        <Rows spacing="1u">
-          <FormField
-            label="What would you like to change?"
-            value={input}
-            control={(props) => (
-              <MultilineInput
-                {...props}
-                placeholder='e.g. "Make the main heading blue" or "Move the logo to the bottom right"'
-                disabled={isLoading}
-                onKeyDown={handleKeyDown}
-                onChange={(value) => setInput(value)}
-                minRows={2}
-                maxRows={5}
-              />
-            )}
-          />
-          <Button
-            variant="primary"
-            onClick={handleSubmit}
-            disabled={!input.trim() || isLoading}
-            loading={isLoading}
-            stretch
-          >
-            {isLoading ? phaseLabel(phase) : "Send"}
-          </Button>
-        </Rows>
-      </Box>
-    </Rows>
+      <Rows spacing="1u">
+        <Text size="small" tone="secondary">
+          What would you like to change?
+        </Text>
+        <MultilineInput
+          value={input}
+          placeholder={'e.g. "Make the heading blue" or "Move the logo to the bottom right"'}
+          disabled={isLoading}
+          onKeyDown={handleKeyDown}
+          onChange={(value) => setInput(value)}
+          minRows={2}
+          maxRows={5}
+          autoGrow
+        />
+        <Button
+          variant="primary"
+          onClick={handleSubmit}
+          disabled={!input.trim() || isLoading}
+          loading={isLoading}
+          stretch
+        >
+          {isLoading ? phaseLabel(phase) : "Send"}
+        </Button>
+      </Rows>
+    </div>
   );
 }
 
@@ -259,7 +282,6 @@ function phaseLabel(phase: AppPhase): string {
     case "planning": return "Planning changes";
     case "executing": return "Applying changes";
     case "reporting": return "Verifying";
-    case "done": return "Done";
     default: return "Working";
   }
 }

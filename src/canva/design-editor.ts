@@ -1,17 +1,18 @@
 /**
  * design-editor.ts
  *
- * Executes a validated OperationPlan against the live Canva design using the
- * openDesign API.
+ * Executes a validated OperationPlan against the live Canva design.
+ *
+ * ELEMENT ID CONVENTION: IDs are "el-{index}" where index is the element's
+ * position in page.elements.toArray(). The snapshot-builder assigns these
+ * same IDs, so the backend planner can reference elements by index.
  *
  * EXECUTION MODEL:
- *   - All operations in a plan run inside a single openDesign callback to
- *     minimize round-trips and produce a single undo step.
+ *   - All operations run inside one openDesign callback (single undo step).
  *   - session.sync() is called once at the end (batch pattern).
- *   - Each operation is tried independently; failures are recorded but do not
- *     automatically abort later independent operations.
+ *   - Failures are recorded but don't abort later independent operations.
  *
- * IMPORTANT: Runs in the browser. No Node.js APIs allowed.
+ * Runs in the browser. No Node.js APIs.
  */
 
 import { openDesign, type DesignEditing } from "@canva/design";
@@ -23,68 +24,76 @@ import type {
   UpdateFillColorOp,
   UpdateBackgroundColorOp,
   MoveElementOp,
-  ResizeElementOp,
   ChangeLayerOrderOp,
   DeleteElementOp,
   UpdateTextContentOp,
+  GroupElementsOp,
+  UngroupElementOp,
+  DuplicateElementOp,
 } from "../shared/types";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── ID → index resolution ────────────────────────────────────────────────────
 
-/**
- * Find a non-locked element by its ID within the elements list.
- * Returns null if not found or if locked (with a logged reason).
- */
-function findEditableElement(
-  elements: DesignEditing.ElementList<DesignEditing.Element>,
+function idToIndex(elementId: string): number | null {
+  const match = elementId.match(/^el-(\d+)$/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function findByIndex(
+  elements: DesignEditing.ElementList,
   elementId: string
-): DesignEditing.Element | null {
-  const found = elements.toArray().find((el) => {
-    return (el as unknown as { id: string }).id === elementId;
-  });
-  if (!found) {
-    console.warn(`[design-editor] Element not found: ${elementId}`);
+): DesignEditing.AbsoluteElement | null {
+  const idx = idToIndex(elementId);
+  if (idx === null) {
+    console.warn(`[design-editor] Cannot parse element ID: ${elementId}`);
     return null;
   }
-  if (found.locked) {
-    console.warn(`[design-editor] Element is locked: ${elementId}`);
+  const arr = elements.toArray();
+  const el = arr[idx];
+  if (!el) {
+    console.warn(`[design-editor] No element at index ${idx} (total: ${arr.length})`);
     return null;
   }
-  return found;
+  if (el.locked) {
+    console.warn(`[design-editor] Element at index ${idx} is locked`);
+    return null;
+  }
+  return el;
 }
 
 // ─── Operation executors ──────────────────────────────────────────────────────
 
 function executeUpdateTextStyle(
   op: UpdateTextStyleOp,
-  elements: DesignEditing.ElementList<DesignEditing.Element>
+  elements: DesignEditing.ElementList
 ): { success: boolean; error?: string } {
-  const el = findEditableElement(elements, op.elementId);
+  const el = findByIndex(elements, op.elementId);
   if (!el) return { success: false, error: `Element ${op.elementId} not found or locked` };
-  if (el.type !== "text") return { success: false, error: `Element ${op.elementId} is not a text element (type: ${el.type})` };
+  if (el.type !== "text") return { success: false, error: `Element ${op.elementId} is not a text (type: ${el.type})` };
 
-  const textEl = el as DesignEditing.TextElement;
+  const textEl = el;
   const plaintext = textEl.text.readPlaintext();
-  const range = op.range ?? { start: 0, length: plaintext.length };
+  const length = op.range?.length ?? plaintext.length;
+  const index = op.range?.index ?? 0;
+  const bounds = { index, length };
 
-  // Build the formatting object (only include defined fields)
-  const fmt: Record<string, unknown> = {};
-  if (op.formatting.color !== undefined) fmt.color = op.formatting.color;
-  if (op.formatting.fontSize !== undefined) fmt.fontSize = op.formatting.fontSize;
-  if (op.formatting.fontWeight !== undefined) fmt.fontWeight = op.formatting.fontWeight;
-  if (op.formatting.fontStyle !== undefined) fmt.fontStyle = op.formatting.fontStyle;
-  if (op.formatting.decoration !== undefined) fmt.decoration = op.formatting.decoration;
-
+  // Paragraph-level: textAlign
   if (op.formatting.textAlign !== undefined) {
-    // textAlign is paragraph-level — use formatParagraph
-    textEl.text.formatParagraph(range, { textAlign: op.formatting.textAlign });
+    textEl.text.formatParagraph(bounds, { textAlign: op.formatting.textAlign });
   }
 
-  // Apply inline formatting only if there are inline properties
-  const inlineKeys = ["color", "fontSize", "fontWeight", "fontStyle", "decoration"];
-  const hasInline = inlineKeys.some((k) => fmt[k] !== undefined);
+  // Inline formatting: replace the same text, applying new formatting
+  const inlineFormatting: Record<string, unknown> = {};
+  if (op.formatting.color !== undefined) inlineFormatting.color = op.formatting.color;
+  if (op.formatting.fontSize !== undefined) inlineFormatting.fontSize = op.formatting.fontSize;
+  if (op.formatting.fontWeight !== undefined) inlineFormatting.fontWeight = op.formatting.fontWeight;
+  if (op.formatting.fontStyle !== undefined) inlineFormatting.fontStyle = op.formatting.fontStyle;
+  if (op.formatting.decoration !== undefined) inlineFormatting.decoration = op.formatting.decoration;
+
+  const hasInline = Object.keys(inlineFormatting).length > 0;
   if (hasInline) {
-    textEl.text.replaceText(range, plaintext.slice(range.start, range.start + range.length), fmt as Parameters<typeof textEl.text.replaceText>[2]);
+    const segment = plaintext.slice(index, index + length);
+    textEl.text.replaceText(bounds, segment, inlineFormatting as Parameters<typeof textEl.text.replaceText>[2]);
   }
 
   return { success: true };
@@ -92,18 +101,17 @@ function executeUpdateTextStyle(
 
 function executeUpdateFillColor(
   op: UpdateFillColorOp,
-  elements: DesignEditing.ElementList<DesignEditing.Element>
+  elements: DesignEditing.ElementList
 ): { success: boolean; error?: string } {
-  const el = findEditableElement(elements, op.elementId);
+  const el = findByIndex(elements, op.elementId);
   if (!el) return { success: false, error: `Element ${op.elementId} not found or locked` };
 
   if (el.type === "rect") {
-    (el as DesignEditing.RectElement).fill.colorContainer.set({ type: "solid", color: op.color });
+    el.fill.colorContainer.set({ type: "solid", color: op.color });
     return { success: true };
   }
   if (el.type === "shape") {
-    const shapeEl = el as DesignEditing.ShapeElement;
-    shapeEl.paths.forEach((path) => {
+    el.paths.forEach((path) => {
       path.fill.colorContainer.set({ type: "solid", color: op.color });
     });
     return { success: true };
@@ -124,45 +132,39 @@ function executeUpdateBackgroundColor(
 
 function executeMoveElement(
   op: MoveElementOp,
-  elements: DesignEditing.ElementList<DesignEditing.Element>
+  elements: DesignEditing.ElementList
 ): { success: boolean; error?: string } {
-  const el = findEditableElement(elements, op.elementId);
+  const el = findByIndex(elements, op.elementId);
   if (!el) return { success: false, error: `Element ${op.elementId} not found or locked` };
+  if (el.type === "unsupported") return { success: false, error: `Cannot move unsupported element` };
 
   el.top = op.top;
   el.left = op.left;
   return { success: true };
 }
 
-function executeResizeElement(
-  op: ResizeElementOp,
-  elements: DesignEditing.ElementList<DesignEditing.Element>
-): { success: boolean; error?: string } {
-  const el = findEditableElement(elements, op.elementId);
-  if (!el) return { success: false, error: `Element ${op.elementId} not found or locked` };
-
-  el.width = op.width;
-  // Text elements have auto height — skip height update for them
-  if (op.height !== undefined && el.type !== "text") {
-    el.height = op.height;
-  }
-  return { success: true };
-}
 
 function executeChangeLayerOrder(
   op: ChangeLayerOrderOp,
-  elements: DesignEditing.ElementList<DesignEditing.Element>
+  elements: DesignEditing.ElementList
 ): { success: boolean; error?: string } {
-  const target = findEditableElement(elements, op.elementId);
+  const target = findByIndex(elements, op.elementId);
   if (!target) return { success: false, error: `Element ${op.elementId} not found or locked` };
 
   if (op.relativeElementId === null) {
-    // Move to top of stack (last in collection = rendered on top)
-    elements.moveAfter(elements.toArray().at(-1) ?? undefined, target);
+    // Move to top of stack (last in array = rendered on top)
+    const arr = elements.toArray();
+    const last = arr[arr.length - 1];
+    if (last && last !== target) {
+      elements.moveAfter(last, target);
+    }
     return { success: true };
   }
 
-  const anchor = elements.toArray().find((el) => (el as unknown as { id: string }).id === op.relativeElementId);
+  const anchorIdx = idToIndex(op.relativeElementId);
+  if (anchorIdx === null) return { success: false, error: `Invalid anchor ID: ${op.relativeElementId}` };
+
+  const anchor = elements.toArray()[anchorIdx];
   if (!anchor) return { success: false, error: `Anchor element ${op.relativeElementId} not found` };
 
   if (op.direction === "before") {
@@ -175,9 +177,9 @@ function executeChangeLayerOrder(
 
 function executeDeleteElement(
   op: DeleteElementOp,
-  elements: DesignEditing.ElementList<DesignEditing.Element>
+  elements: DesignEditing.ElementList
 ): { success: boolean; error?: string } {
-  const el = findEditableElement(elements, op.elementId);
+  const el = findByIndex(elements, op.elementId);
   if (!el) return { success: false, error: `Element ${op.elementId} not found or locked` };
 
   elements.delete(el);
@@ -186,43 +188,173 @@ function executeDeleteElement(
 
 function executeUpdateTextContent(
   op: UpdateTextContentOp,
-  elements: DesignEditing.ElementList<DesignEditing.Element>
+  elements: DesignEditing.ElementList
 ): { success: boolean; error?: string } {
-  const el = findEditableElement(elements, op.elementId);
+  const el = findByIndex(elements, op.elementId);
   if (!el) return { success: false, error: `Element ${op.elementId} not found or locked` };
   if (el.type !== "text") return { success: false, error: `Element ${op.elementId} is not a text element` };
 
-  const textEl = el as DesignEditing.TextElement;
-  const currentLength = textEl.text.readPlaintext().length;
+  const plaintext = el.text.readPlaintext();
+  const bounds = { index: 0, length: plaintext.length };
 
   if (op.preserveFormatting) {
-    // Replace text in the full range without changing existing formatting
-    textEl.text.replaceText(
-      { start: 0, length: currentLength },
-      op.newText
-    );
+    el.text.replaceText(bounds, op.newText);
   } else {
-    textEl.text.replaceText(
-      { start: 0, length: currentLength },
-      op.newText,
-      {}
-    );
+    el.text.replaceText(bounds, op.newText, {});
   }
   return { success: true };
 }
 
 // ─── Plan executor ────────────────────────────────────────────────────────────
 
-/**
- * Executes a single operation and returns its result.
- * Requires the page and elements list from an active openDesign session.
- */
-function executeOperation(
+async function executeGroupElements(
+  op: GroupElementsOp,
+  elements: DesignEditing.ElementList,
+  helpers: DesignEditing.PageHelpers
+): Promise<{ success: boolean; error?: string }> {
+  const resolvedElements: Exclude<DesignEditing.GroupContentElement, DesignEditing.UnsupportedElement>[] = [];
+
+  for (const id of op.elementIds) {
+    const el = findByIndex(elements, id);
+    if (!el) {
+      return { success: false, error: `Element ${id} not found or locked` };
+    }
+    if (el.type === "unsupported" || el.type === "group") {
+      return { success: false, error: `Element ${id} cannot be grouped (type: ${el.type})` };
+    }
+    resolvedElements.push(el);
+  }
+
+  if (resolvedElements.length < 2) {
+    return { success: false, error: "At least 2 valid elements are required to group" };
+  }
+
+  await helpers.group({ elements: resolvedElements });
+  return { success: true };
+}
+
+async function executeUngroupElement(
+  op: UngroupElementOp,
+  elements: DesignEditing.ElementList,
+  helpers: DesignEditing.PageHelpers
+): Promise<{ success: boolean; error?: string }> {
+  const el = findByIndex(elements, op.elementId);
+  if (!el) {
+    return { success: false, error: `Element ${op.elementId} not found or locked` };
+  }
+  if (el.type !== "group") {
+    return { success: false, error: `Element ${op.elementId} is not a group (type: ${el.type})` };
+  }
+
+  await helpers.ungroup({ element: el });
+  return { success: true };
+}
+
+function executeDuplicateElement(
+  op: DuplicateElementOp,
+  elements: DesignEditing.ElementList,
+  helpers: DesignEditing.PageHelpers
+): { success: boolean; error?: string } {
+  const el = findByIndex(elements, op.elementId);
+  if (!el) return { success: false, error: `Element ${op.elementId} not found or locked` };
+
+  const top = el.top + (op.offsetTop ?? 20);
+  const left = el.left + (op.offsetLeft ?? 20);
+
+  switch (el.type) {
+    case "text": {
+      const newState = helpers.elementStateBuilder.createTextElement({
+        top,
+        left,
+        width: el.width,
+        text: { regions: el.text.readTextRegions() },
+        rotation: el.rotation,
+        transparency: el.transparency,
+      });
+      elements.insertAfter(el, newState);
+      return { success: true };
+    }
+    case "rect": {
+      let fill: DesignEditing.FillOpts | undefined;
+      const colorRef = el.fill.colorContainer?.ref;
+      const mediaRef = el.fill.mediaContainer?.ref;
+
+      if (colorRef?.type === "solid") {
+        fill = { colorContainer: { type: "solid", color: colorRef.color } };
+      } else if (mediaRef?.type === "image") {
+        fill = { mediaContainer: { type: "image", imageRef: mediaRef.imageRef, flipX: mediaRef.flipX, flipY: mediaRef.flipY } };
+      } else if (mediaRef?.type === "video") {
+        fill = { mediaContainer: { type: "video", videoRef: mediaRef.videoRef, flipX: mediaRef.flipX, flipY: mediaRef.flipY } };
+      }
+
+      const newState = helpers.elementStateBuilder.createRectElement({
+        top,
+        left,
+        width: el.width,
+        height: el.height,
+        fill,
+        rotation: el.rotation,
+        transparency: el.transparency,
+      });
+      elements.insertAfter(el, newState);
+      return { success: true };
+    }
+    case "shape": {
+      const pathOptsList: DesignEditing.PathOpts[] = el.paths.toArray().map((path) => {
+        const pathOpts: DesignEditing.PathOpts = { d: path.d };
+        const colorRef = path.fill.colorContainer?.ref;
+        const mediaRef = path.fill.mediaContainer?.ref;
+
+        if (colorRef?.type === "solid") {
+          pathOpts.fill = { colorContainer: { type: "solid", color: colorRef.color } };
+        } else if (mediaRef?.type === "image") {
+          pathOpts.fill = { mediaContainer: { type: "image", imageRef: mediaRef.imageRef, flipX: mediaRef.flipX, flipY: mediaRef.flipY } };
+        } else if (mediaRef?.type === "video") {
+          pathOpts.fill = { mediaContainer: { type: "video", videoRef: mediaRef.videoRef, flipX: mediaRef.flipX, flipY: mediaRef.flipY } };
+        }
+        return pathOpts;
+      });
+
+      const newState = helpers.elementStateBuilder.createShapeElement({
+        top,
+        left,
+        width: el.width,
+        height: el.height,
+        viewBox: el.viewBox,
+        paths: pathOptsList,
+        rotation: el.rotation,
+        transparency: el.transparency,
+      });
+      elements.insertAfter(el, newState);
+      return { success: true };
+    }
+    case "embed": {
+      const newState = helpers.elementStateBuilder.createEmbedElement({
+        top,
+        left,
+        width: el.width,
+        height: el.height,
+        url: el.url,
+        rotation: el.rotation,
+        transparency: el.transparency,
+      });
+      elements.insertAfter(el, newState);
+      return { success: true };
+    }
+    case "group":
+    case "unsupported":
+    default:
+      return { success: false, error: "Cannot duplicate group or unsupported elements" };
+  }
+}
+
+async function executeOperation(
   op: DesignOperation,
   index: number,
   page: DesignEditing.AbsolutePage,
-  elements: DesignEditing.ElementList<DesignEditing.Element>
-): OperationResult {
+  elements: DesignEditing.ElementList,
+  helpers: DesignEditing.PageHelpers
+): Promise<OperationResult> {
   try {
     let opResult: { success: boolean; error?: string };
 
@@ -239,9 +371,6 @@ function executeOperation(
       case "move_element":
         opResult = executeMoveElement(op, elements);
         break;
-      case "resize_element":
-        opResult = executeResizeElement(op, elements);
-        break;
       case "change_layer_order":
         opResult = executeChangeLayerOrder(op, elements);
         break;
@@ -251,9 +380,19 @@ function executeOperation(
       case "update_text_content":
         opResult = executeUpdateTextContent(op, elements);
         break;
+      case "group_elements":
+        opResult = await executeGroupElements(op, elements, helpers);
+        break;
+      case "ungroup_element":
+        opResult = await executeUngroupElement(op, elements, helpers);
+        break;
+      case "duplicate_element":
+        opResult = executeDuplicateElement(op, elements, helpers);
+        break;
       default: {
-        const exhaustiveCheck: never = op;
-        opResult = { success: false, error: `Unknown operation type: ${(exhaustiveCheck as { type: string }).type}` };
+        const _exhaustive: never = op;
+        opResult = { success: false, error: `Unknown operation type` };
+        void _exhaustive;
       }
     }
 
@@ -275,23 +414,42 @@ function executeOperation(
   }
 }
 
+export function checkStaleness(snapshotCount: number, liveCount: number): boolean {
+  return snapshotCount !== liveCount;
+}
+
 /**
- * Executes an entire OperationPlan against the current page's live design.
- *
- * All operations run inside one openDesign callback; sync is called once at
- * the end. If a non-background operation fails, later operations that depend
- * on it (via the plan's `dependencies` field) are skipped.
+ * Executes an OperationPlan against the current page.
+ * All operations run in one openDesign callback; sync is called once at the end.
  */
-export async function executePlan(
-  plan: OperationPlan
-): Promise<OperationResult[]> {
+export async function executePlan(plan: OperationPlan): Promise<OperationResult[]> {
+  // Staleness guard: check if element count changed since snapshot
+  let isStale = false;
+  await openDesign({ type: "current_page" }, async (session) => {
+    const page = session.page;
+    if (page.type === "absolute") {
+      const liveCount = page.elements.toArray().length;
+      if (checkStaleness(plan.snapshotElementCount, liveCount)) {
+        isStale = true;
+      }
+    }
+  });
+
+  if (isStale) {
+    return plan.operations.map((op, i) => ({
+      operationIndex: i,
+      operationType: op.type,
+      status: "failed",
+      errorMessage: "Design was modified since the plan was created — please try again.",
+    }));
+  }
+
   const results: OperationResult[] = [];
 
   await openDesign({ type: "current_page" }, async (session) => {
     const page = session.page;
 
     if (page.type !== "absolute") {
-      // Mark all operations as failed for unsupported page type
       plan.operations.forEach((op, i) => {
         results.push({
           operationIndex: i,
@@ -309,19 +467,18 @@ export async function executePlan(
           operationIndex: i,
           operationType: op.type,
           status: "failed",
-          errorMessage: "Page is locked and cannot be edited",
+          errorMessage: "Page is locked",
         });
       });
       return;
     }
 
-    // Build a set of failed operation indices for dependency checking
     const failedIndices = new Set<number>();
 
     for (let i = 0; i < plan.operations.length; i++) {
       const op = plan.operations[i];
 
-      // Check if any dependency failed
+      // Skip if a dependency failed
       if (plan.dependencies) {
         const blockedBy = plan.dependencies
           .filter((dep) => dep.operationIndex === i)
@@ -339,21 +496,16 @@ export async function executePlan(
         }
       }
 
-      const result = executeOperation(op, i, page, page.elements);
+      const result = await executeOperation(op, i, page, page.elements, session.helpers);
       results.push(result);
-
-      if (result.status === "failed") {
-        failedIndices.add(i);
-      }
+      if (result.status === "failed") failedIndices.add(i);
     }
 
-    // Batch sync: apply all successful mutations at once
     try {
       await session.sync();
     } catch (syncErr) {
       const message = syncErr instanceof Error ? syncErr.message : String(syncErr);
       console.error("[design-editor] sync() failed:", syncErr);
-      // Mark all previously succeeded operations as unverified
       results.forEach((r) => {
         if (r.status === "succeeded") {
           r.status = "succeeded_unverified";

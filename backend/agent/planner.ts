@@ -14,6 +14,10 @@ import type { DesignGraph } from "../graph/models";
 import { summarizeGraphForPrompt } from "../graph/queries";
 import { SYSTEM_PROMPT, buildPlanningPrompt } from "./prompts";
 import { createLLMProvider, type LLMProvider } from "./llm-provider";
+import {
+  retrieveDesignKnowledge,
+  formatRetrievedKnowledgeForPrompt,
+} from "../rag/retriever";
 
 // ─── Zod schemas for LLM output validation ───────────────────────────────────
 
@@ -230,7 +234,22 @@ export async function generatePlan(
   _sessionId: string
 ): Promise<PlannerResult> {
   const designSummary = summarizeGraphForPrompt(graph);
-  const userPrompt = buildPlanningPrompt(designSummary, instruction, conversationHistory);
+
+  // Retrieve relevant design knowledge (style archetypes, color palettes, component blueprints)
+  let retrievedKnowledge = "";
+  try {
+    const retrievedItems = await retrieveDesignKnowledge(instruction, 2);
+    retrievedKnowledge = formatRetrievedKnowledgeForPrompt(retrievedItems);
+  } catch (err) {
+    console.warn("[planner] RAG retrieval skipped:", err);
+  }
+
+  const userPrompt = buildPlanningPrompt(
+    designSummary,
+    instruction,
+    conversationHistory,
+    retrievedKnowledge
+  );
 
   let rawResponse: string;
   try {

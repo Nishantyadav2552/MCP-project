@@ -67,7 +67,8 @@ Respond ONLY with valid JSON. No markdown, no prose outside the JSON.`;
 export function buildPlanningPrompt(
   designSummary: string,
   instruction: string,
-  conversationHistory: Array<{ role: "user" | "assistant"; content: string }>
+  conversationHistory: Array<{ role: "user" | "assistant"; content: string }>,
+  retrievedKnowledge = ""
 ): string {
   const historyText = conversationHistory.length > 0
     ? `\n## Recent conversation\n${conversationHistory
@@ -79,7 +80,7 @@ export function buildPlanningPrompt(
   return `${historyText}
 ## Current design
 ${designSummary}
-
+${retrievedKnowledge}
 ## User instruction
 ${instruction}
 

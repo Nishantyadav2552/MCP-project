@@ -177,9 +177,15 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 // ─── Start ─────────────────────────────────────────────────────────────────────
 
+import { initializeKnowledgeIndex } from "./rag/retriever";
+
 app.listen(PORT, () => {
   console.log(`[canva-cursor-backend] Server running on http://localhost:${PORT}`);
   console.log(`[canva-cursor-backend] LLM provider: ${process.env.LLM_PROVIDER ?? "gemini"} / ${process.env.LLM_MODEL ?? "gemini-3-flash-preview"}`);
+  // Asynchronously pre-index the design knowledge base
+  initializeKnowledgeIndex().catch((err) =>
+    console.warn("[canva-cursor-backend] Knowledge index pre-warm notice:", err)
+  );
 });
 
 export default app;

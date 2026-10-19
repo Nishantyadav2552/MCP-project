@@ -219,10 +219,40 @@ export async function generatePlan(
     return { type: "error", error: "LLM returned an invalid response (not JSON). Please try again." };
   }
 
+  // Normalize operations if LLM omitted "type"
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    "operations" in parsed &&
+    Array.isArray((parsed as Record<string, unknown>).operations)
+  ) {
+    const rawOps = (parsed as Record<string, unknown>).operations as Array<Record<string, unknown>>;
+    for (const op of rawOps) {
+      if (typeof op === "object" && op !== null && !op.type) {
+        if ("formatting" in op) {
+          op.type = "update_text_style";
+        } else if ("newText" in op) {
+          op.type = "update_text_content";
+        } else if ("color" in op) {
+          op.type = "elementId" in op ? "update_fill_color" : "update_background_color";
+        } else if ("top" in op || "left" in op) {
+          op.type = "move_element";
+        } else if ("relativeElementId" in op) {
+          op.type = "change_layer_order";
+        } else if ("elementIds" in op) {
+          op.type = "group_elements";
+        } else if ("offsetTop" in op || "offsetLeft" in op) {
+          op.type = "duplicate_element";
+        }
+      }
+    }
+  }
+
   // Validate schema
   const validation = LLMResponseSchema.safeParse(parsed);
   if (!validation.success) {
     console.error("[planner] Schema validation failed:", validation.error.issues);
+    console.error("[planner] Parsed LLM object was:", JSON.stringify(parsed, null, 2));
     return { type: "error", error: "LLM response did not match expected schema. Please try again." };
   }
 

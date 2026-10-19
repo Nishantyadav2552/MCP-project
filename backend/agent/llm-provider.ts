@@ -8,7 +8,8 @@
  * Set LLM_PROVIDER and LLM_MODEL in .env to configure.
  */
 
-import "dotenv/config";
+import dotenv from "dotenv";
+dotenv.config({ override: true });
 
 export interface LLMProvider {
   /** Send a system + user message and return the assistant's text response. */
@@ -18,11 +19,25 @@ export interface LLMProvider {
 // ─── Gemini ───────────────────────────────────────────────────────────────────
 
 function createGeminiProvider(apiKey: string, model: string): LLMProvider {
+  // Normalize legacy / retired Gemini model names
+  const normalizedModel =
+    model === "gemini-1.5-flash-latest" ||
+    model === "gemini-1.5-flash" ||
+    model === "gemini-2.5-flash"
+      ? "gemini-flash-lite-latest"
+      : model;
+
+  const modelCandidates = Array.from(
+    new Set([
+      normalizedModel,
+      "gemini-flash-lite-latest",
+      "gemini-3.5-flash",
+      "gemini-3-flash-preview",
+    ])
+  );
+
   return {
     async complete(systemPrompt: string, userPrompt: string): Promise<string> {
-      // Using the REST API directly to avoid SDK version coupling
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
       const body = {
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: "user", parts: [{ text: userPrompt }] }],
@@ -32,24 +47,50 @@ function createGeminiProvider(apiKey: string, model: string): LLMProvider {
         },
       };
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      let lastError: Error | null = null;
 
-      if (!response.ok) {
-        const text = await response.text().catch(() => "Unknown error");
-        throw new Error(`Gemini API error (${response.status}): ${text}`);
+      for (const m of modelCandidates) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const response = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+
+            if (!response.ok) {
+              const text = await response.text().catch(() => "Unknown error");
+              // If 503 (high demand), 404 (model retired), or 429 (rate limited), try fallback model
+              if (
+                response.status === 503 ||
+                response.status === 404 ||
+                response.status === 429
+              ) {
+                lastError = new Error(`Gemini API error (${response.status}) on ${m}: ${text}`);
+                break; // move to next candidate model
+              }
+              throw new Error(`Gemini API error (${response.status}): ${text}`);
+            }
+
+            const data = (await response.json()) as {
+              candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+            };
+
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) throw new Error("Gemini returned empty response");
+            return text;
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+            if (attempt < 2) {
+              await new Promise((r) => setTimeout(r, 500));
+            }
+          }
+        }
       }
 
-      const data = (await response.json()) as {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-      };
-
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error("Gemini returned empty response");
-      return text;
+      throw lastError ?? new Error("Gemini request failed across all candidate models");
     },
   };
 }
@@ -134,7 +175,7 @@ function createOpenAIProvider(apiKey: string, model: string): LLMProvider {
 
 export function createLLMProvider(): LLMProvider {
   const provider = (process.env.LLM_PROVIDER ?? "gemini").toLowerCase();
-  const model = process.env.LLM_MODEL ?? "gemini-1.5-flash-latest";
+  const model = process.env.LLM_MODEL ?? "gemini-3-flash-preview";
 
   switch (provider) {
     case "gemini": {

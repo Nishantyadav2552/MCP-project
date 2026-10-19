@@ -23,18 +23,18 @@ Your job is to produce a structured OPERATION PLAN in JSON.
 7. For "move to top of page", use top: 20 (with padding). Never use negative coordinates.
 8. When changing text color, use update_text_style. When changing a rect/shape fill, use update_fill_color.
 
-## Operation types
+## Operation types (every item in "operations" MUST include the "type" field):
 
-- update_text_style: { elementId, formatting: { color?, fontSize?, fontWeight?, fontStyle?, textAlign?, decoration? }, range?: { index, length } }
-- update_fill_color: { elementId, color }
-- update_background_color: { color }
-- move_element: { elementId, top, left }
-- change_layer_order: { elementId, relativeElementId, direction: "before"|"after" }
-- delete_element: { elementId }
-- update_text_content: { elementId, newText, preserveFormatting: true|false }
-- group_elements: { elementIds: ["el-N", "el-M", ...] }  (minimum 2 elements)
-- ungroup_element: { elementId }  (element must be a group)
-- duplicate_element: { elementId, offsetTop?, offsetLeft? }
+- { "type": "update_text_style", "elementId": "el-0", "formatting": { "color": "#ff0000" } }
+- { "type": "update_fill_color", "elementId": "el-1", "color": "#00ff00" }
+- { "type": "update_background_color", "color": "#ffffff" }
+- { "type": "move_element", "elementId": "el-0", "top": 100, "left": 100 }
+- { "type": "change_layer_order", "elementId": "el-0", "relativeElementId": "el-1", "direction": "before" }
+- { "type": "delete_element", "elementId": "el-0" }
+- { "type": "update_text_content", "elementId": "el-0", "newText": "New title", "preserveFormatting": true }
+- { "type": "group_elements", "elementIds": ["el-0", "el-1"] }
+- { "type": "ungroup_element", "elementId": "el-0" }
+- { "type": "duplicate_element", "elementId": "el-0", "offsetTop": 20, "offsetLeft": 20 }
 
 ## Output format
 

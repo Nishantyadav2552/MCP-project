@@ -26,24 +26,45 @@ const PORT = parseInt(process.env.CANVA_BACKEND_PORT ?? "3001", 10);
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
 
-// CORS: allow requests from the Canva app origin (set in .env)
+// CORS: allow requests from the Canva app origin (set in .env or dynamically matching Canva app subdomains)
 const allowedOrigins = [
   "http://localhost:8080",
   "https://localhost:8080",
   process.env.CANVA_APP_ORIGIN,
+  process.env.CANVA_APP_ID
+    ? `https://app-${process.env.CANVA_APP_ID.toLowerCase()}.canva-apps.com`
+    : undefined,
 ].filter(Boolean) as string[];
 
 app.use(
   cors({
     origin: (origin, callback) => {
       // Allow requests with no origin (e.g. server-side tools, curl)
-      if (!origin || allowedOrigins.some((o) => origin.startsWith(o))) {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      const isExplicitlyAllowed = allowedOrigins.some((o) =>
+        origin.toLowerCase().startsWith(o.toLowerCase())
+      );
+
+      let isCanvaOrigin = false;
+      try {
+        const parsed = new URL(origin);
+        isCanvaOrigin =
+          parsed.hostname.endsWith(".canva-apps.com") ||
+          parsed.hostname.endsWith(".canva.com");
+      } catch {
+        // Invalid origin format
+      }
+
+      if (isExplicitlyAllowed || isCanvaOrigin) {
         callback(null, true);
       } else {
         callback(new Error(`CORS: origin not allowed: ${origin}`));
       }
     },
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "OPTIONS"],
     credentials: true,
   })
 );
@@ -158,7 +179,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(PORT, () => {
   console.log(`[canva-cursor-backend] Server running on http://localhost:${PORT}`);
-  console.log(`[canva-cursor-backend] LLM provider: ${process.env.LLM_PROVIDER ?? "gemini"} / ${process.env.LLM_MODEL ?? "gemini-1.5-flash-latest"}`);
+  console.log(`[canva-cursor-backend] LLM provider: ${process.env.LLM_PROVIDER ?? "gemini"} / ${process.env.LLM_MODEL ?? "gemini-3-flash-preview"}`);
 });
 
 export default app;

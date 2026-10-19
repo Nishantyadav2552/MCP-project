@@ -12,8 +12,8 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "outDir": "backend/dist",
-    "rootDir": "backend"
+    "rootDir": "."
   },
-  "include": ["backend"],
-  "exclude": ["node_modules", "src", "tests"]
+  "include": ["backend", "src/shared"],
+  "exclude": ["node_modules", "src/components", "src/canva", "tests"]
 }

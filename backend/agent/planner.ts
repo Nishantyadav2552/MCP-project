@@ -92,6 +92,40 @@ const DuplicateElementOpSchema = z.object({
   offsetLeft: z.number().optional(),
 });
 
+const AddShapeOpSchema = z.object({
+  type: z.literal("add_shape"),
+  shape: z.enum(["rectangle", "circle", "triangle", "star"]),
+  top: z.number(),
+  left: z.number(),
+  width: z.number().positive(),
+  height: z.number().positive(),
+  color: z.string().regex(/^#[0-9a-f]{6}$/),
+  strokeColor: z.string().regex(/^#[0-9a-f]{6}$/).optional(),
+  strokeWeight: z.number().nonnegative().optional(),
+});
+
+const AddLineOpSchema = z.object({
+  type: z.literal("add_line"),
+  top: z.number(),
+  left: z.number(),
+  width: z.number().positive(),
+  height: z.number().positive().optional(),
+  color: z.string().regex(/^#[0-9a-f]{6}$/),
+  rotation: z.number().optional(),
+});
+
+const AddTextOpSchema = z.object({
+  type: z.literal("add_text"),
+  text: z.string().min(1),
+  top: z.number(),
+  left: z.number(),
+  width: z.number().positive().optional(),
+  fontSize: z.number().positive().optional(),
+  color: z.string().regex(/^#[0-9a-f]{6}$/).optional(),
+  fontWeight: z.enum(["normal", "bold"]).optional(),
+  textAlign: z.enum(["start", "center", "end", "justify"]).optional(),
+});
+
 export const OperationSchema = z.discriminatedUnion("type", [
   UpdateTextStyleOpSchema,
   UpdateFillColorOpSchema,
@@ -103,6 +137,9 @@ export const OperationSchema = z.discriminatedUnion("type", [
   GroupElementsOpSchema,
   UngroupElementOpSchema,
   DuplicateElementOpSchema,
+  AddShapeOpSchema,
+  AddLineOpSchema,
+  AddTextOpSchema,
 ]);
 
 const PlanResponseSchema = z.object({
@@ -243,6 +280,10 @@ export async function generatePlan(
           op.type = "group_elements";
         } else if ("offsetTop" in op || "offsetLeft" in op) {
           op.type = "duplicate_element";
+        } else if ("shape" in op) {
+          op.type = "add_shape";
+        } else if ("text" in op && !("elementId" in op)) {
+          op.type = "add_text";
         }
       }
     }

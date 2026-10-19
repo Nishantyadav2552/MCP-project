@@ -30,6 +30,9 @@ import type {
   GroupElementsOp,
   UngroupElementOp,
   DuplicateElementOp,
+  AddShapeOp,
+  AddLineOp,
+  AddTextOp,
 } from "../shared/types";
 
 // ─── ID → index resolution ────────────────────────────────────────────────────
@@ -348,6 +351,110 @@ function executeDuplicateElement(
   }
 }
 
+function executeAddShape(
+  op: AddShapeOp,
+  elements: DesignEditing.ElementList,
+  helpers: DesignEditing.PageHelpers
+): { success: boolean; error?: string } {
+  if (op.shape === "rectangle") {
+    const stroke =
+      op.strokeColor && op.strokeWeight && op.strokeWeight > 0
+        ? {
+            weight: op.strokeWeight,
+            colorContainer: { type: "solid" as const, color: op.strokeColor },
+          }
+        : undefined;
+
+    const newState = helpers.elementStateBuilder.createRectElement({
+      top: op.top,
+      left: op.left,
+      width: op.width,
+      height: op.height,
+      fill: { colorContainer: { type: "solid", color: op.color } },
+      ...(stroke ? { stroke } : {}),
+    });
+    elements.insertAfter(undefined, newState);
+    return { success: true };
+  }
+
+  // Paths for vector shapes (viewBox 0 0 100 100)
+  let d = "";
+  switch (op.shape) {
+    case "circle":
+      d = "M 50, 0 A 50, 50 0 1, 0 50, 100 A 50, 50 0 1, 0 50, 0 Z";
+      break;
+    case "triangle":
+      d = "M 50, 0 L 100, 100 L 0, 100 Z";
+      break;
+    case "star":
+      d = "M 50, 0 L 61, 35 L 98, 35 L 68, 57 L 79, 91 L 50, 70 L 21, 91 L 32, 57 L 2, 35 L 39, 35 Z";
+      break;
+    default:
+      return { success: false, error: `Unsupported shape type: ${op.shape}` };
+  }
+
+  const newState = helpers.elementStateBuilder.createShapeElement({
+    top: op.top,
+    left: op.left,
+    width: op.width,
+    height: op.height,
+    viewBox: { top: 0, left: 0, width: 100, height: 100 },
+    paths: [
+      {
+        d,
+        fill: { colorContainer: { type: "solid", color: op.color } },
+      },
+    ],
+  });
+  elements.insertAfter(undefined, newState);
+  return { success: true };
+}
+
+function executeAddLine(
+  op: AddLineOp,
+  elements: DesignEditing.ElementList,
+  helpers: DesignEditing.PageHelpers
+): { success: boolean; error?: string } {
+  const height = op.height ?? 2;
+  const newState = helpers.elementStateBuilder.createRectElement({
+    top: op.top,
+    left: op.left,
+    width: op.width,
+    height,
+    rotation: op.rotation ?? 0,
+    fill: { colorContainer: { type: "solid", color: op.color } },
+  });
+  elements.insertAfter(undefined, newState);
+  return { success: true };
+}
+
+function executeAddText(
+  op: AddTextOp,
+  elements: DesignEditing.ElementList,
+  helpers: DesignEditing.PageHelpers
+): { success: boolean; error?: string } {
+  const newState = helpers.elementStateBuilder.createTextElement({
+    top: op.top,
+    left: op.left,
+    width: op.width ?? 300,
+    text: {
+      regions: [
+        {
+          text: op.text,
+          formatting: {
+            fontSize: op.fontSize ?? 24,
+            color: op.color ?? "#000000",
+            fontWeight: op.fontWeight ?? "normal",
+            textAlign: op.textAlign ?? "start",
+          },
+        },
+      ],
+    },
+  });
+  elements.insertAfter(undefined, newState);
+  return { success: true };
+}
+
 async function executeOperation(
   op: DesignOperation,
   index: number,
@@ -388,6 +495,15 @@ async function executeOperation(
         break;
       case "duplicate_element":
         opResult = executeDuplicateElement(op, elements, helpers);
+        break;
+      case "add_shape":
+        opResult = executeAddShape(op, elements, helpers);
+        break;
+      case "add_line":
+        opResult = executeAddLine(op, elements, helpers);
+        break;
+      case "add_text":
+        opResult = executeAddText(op, elements, helpers);
         break;
       default: {
         const _exhaustive: never = op;

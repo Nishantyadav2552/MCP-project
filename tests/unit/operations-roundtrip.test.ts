@@ -153,6 +153,116 @@ describe("OperationSchema roundtrip validation", () => {
     });
   });
 
+  describe("add_shape", () => {
+    it("accepts valid rectangle shape", () => {
+      const op = {
+        type: "add_shape",
+        shape: "rectangle",
+        top: 50,
+        left: 50,
+        width: 100,
+        height: 100,
+        color: "#ff0000",
+      };
+      expect(OperationSchema.safeParse(op).success).toBe(true);
+    });
+
+    it("accepts vector shapes with optional stroke", () => {
+      const op = {
+        type: "add_shape",
+        shape: "circle",
+        top: 100,
+        left: 200,
+        width: 150,
+        height: 150,
+        color: "#0000ff",
+        strokeColor: "#000000",
+        strokeWeight: 2,
+      };
+      expect(OperationSchema.safeParse(op).success).toBe(true);
+    });
+
+    it("rejects unknown shape types or negative dimensions", () => {
+      expect(
+        OperationSchema.safeParse({
+          type: "add_shape",
+          shape: "hexagon",
+          top: 0,
+          left: 0,
+          width: 50,
+          height: 50,
+          color: "#000000",
+        }).success
+      ).toBe(false);
+
+      expect(
+        OperationSchema.safeParse({
+          type: "add_shape",
+          shape: "rectangle",
+          top: 0,
+          left: 0,
+          width: -50,
+          height: 50,
+          color: "#000000",
+        }).success
+      ).toBe(false);
+    });
+  });
+
+  describe("add_line", () => {
+    it("accepts valid line operation", () => {
+      const op = {
+        type: "add_line",
+        top: 200,
+        left: 100,
+        width: 400,
+        height: 4,
+        color: "#333333",
+        rotation: 45,
+      };
+      expect(OperationSchema.safeParse(op).success).toBe(true);
+    });
+
+    it("rejects non-hex color or missing width", () => {
+      expect(
+        OperationSchema.safeParse({
+          type: "add_line",
+          top: 200,
+          left: 100,
+          color: "black",
+        }).success
+      ).toBe(false);
+    });
+  });
+
+  describe("add_text", () => {
+    it("accepts valid text creation operation", () => {
+      const op = {
+        type: "add_text",
+        text: "Hello World",
+        top: 100,
+        left: 150,
+        width: 300,
+        fontSize: 32,
+        color: "#111111",
+        fontWeight: "bold",
+        textAlign: "center",
+      };
+      expect(OperationSchema.safeParse(op).success).toBe(true);
+    });
+
+    it("rejects empty text", () => {
+      expect(
+        OperationSchema.safeParse({
+          type: "add_text",
+          text: "",
+          top: 100,
+          left: 100,
+        }).success
+      ).toBe(false);
+    });
+  });
+
   describe("removed resize_element", () => {
     it("rejects resize_element as an unsupported operation", () => {
       const op = { type: "resize_element", elementId: "el-7", width: 100 };

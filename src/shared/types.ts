@@ -186,6 +186,40 @@ export interface DuplicateElementOp {
   offsetLeft?: number; // pixels to offset the copy right of source; default 20
 }
 
+export interface AddShapeOp {
+  type: "add_shape";
+  shape: "rectangle" | "circle" | "triangle" | "star";
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  color: string; // hex lowercase
+  strokeColor?: string;
+  strokeWeight?: number;
+}
+
+export interface AddLineOp {
+  type: "add_line";
+  top: number;
+  left: number;
+  width: number; // line length in px
+  height?: number; // thickness in px; default 2
+  color: string; // hex lowercase
+  rotation?: number; // degrees
+}
+
+export interface AddTextOp {
+  type: "add_text";
+  text: string;
+  top: number;
+  left: number;
+  width?: number; // default 300
+  fontSize?: number; // default 24
+  color?: string; // hex lowercase; default "#000000"
+  fontWeight?: "normal" | "bold";
+  textAlign?: "start" | "center" | "end" | "justify";
+}
+
 export type DesignOperation =
   | UpdateTextStyleOp
   | UpdateFillColorOp
@@ -196,7 +230,10 @@ export type DesignOperation =
   | UpdateTextContentOp
   | GroupElementsOp
   | UngroupElementOp
-  | DuplicateElementOp;
+  | DuplicateElementOp
+  | AddShapeOp
+  | AddLineOp
+  | AddTextOp;
 
 /**
  * A validated, ordered plan produced by the backend agent.
